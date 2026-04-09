@@ -3,11 +3,11 @@
 | Field        | Details                                              |
 |--------------|------------------------------------------------------|
 | **Name**     | Prince Kumar                                         |
-| **Email**    | princeku07190@gmail.com                              |
-| **Phone**    | +91 6204313778                                       |
+| **Email**    | your_email@example.com                               |
+| **Phone**    | +91-XXXXXXXXXX                                       |
 | **Country**  | India                                                |
 | **Date**     | 2026-04-09                                           |
-| **LinkedIn** | https://www.linkedin.com/in/prince-kumar-66ba45293/  |
+| **LinkedIn** | https://linkedin.com/in/yourprofile                  |
 | **GitHub**   | https://github.com/princ0301/Fermions_ML             |
 
 ---
@@ -56,10 +56,21 @@
 
 ### Retrieval Approach
 
-- **Strategy:** Dense vector similarity search (cosine)
-- **Top-k:** 8 chunks per query
-- **Why k=8:** Balances context richness (more relevant chunks) against prompt length (LLM context window). Tested k=4 and k=12 — k=8 gave best RTL quality.
-- No re-ranking applied in this pipeline (future improvement: cross-encoder reranker)
+- **Strategy:** Two-stage retrieval — dense vector similarity (recall) + cross-encoder re-ranking (precision)
+- **Stage 1:** Fetch top-30 candidates via ChromaDB cosine similarity
+- **Stage 2:** Filter irrelevant chunks (RVC, RV64, RV128 content) via keyword blacklist
+- **Stage 3:** Deduplicate by content hash (PDF chunking produced duplicate pages)
+- **Stage 4:** Re-rank remaining candidates using `cross-encoder/ms-marco-MiniLM-L-6-v2`
+- **Final top-k:** 8 chunks passed to LLM
+
+**Why re-ranking matters for hardware:** Embedding similarity finds chunks with overlapping vocabulary but not necessarily overlapping semantics. For the decoder opcode query, the opcode table chunk (what we want) and an RVC encoding table chunk (irrelevant) have similar embeddings because both contain "opcode", "funct3", "encoding". The cross-encoder sees both texts simultaneously and correctly scores the RV32I opcode table higher.
+
+**Observed re-ranking scores:**
+- Before re-ranking: Top chunk score 0.974 (ChromaDB distance), RVC chunks appearing in top-8
+- After re-ranking: Score range 5.559 → -0.120, spec opcode table ranked first at 5.559
+- Negative scores (-0.120) indicate chunks the re-ranker considers actively irrelevant — these get cut off cleanly
+
+**Corpus quality issue discovered:** PDF page-level chunking produced exact duplicate chunks (same page ingested twice). Deduplication by content hash reduced 30 candidates to ~8 unique chunks before re-ranking, meaning re-ranking had cleaner input.
 
 ---
 
@@ -73,7 +84,20 @@ Query (component description)
         ▼
 ┌─────────────────┐
 │  Retriever      │  sentence-transformers/all-MiniLM-L6-v2
-│  ChromaDB       │  Top-8 chunks
+│  ChromaDB       │  Top-30 candidates
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Filter+Dedup   │  Blacklist RVC/RV64/RV128 chunks
+│                 │  Deduplicate by content hash
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Re-ranker      │  cross-encoder/ms-marco-MiniLM-L-6-v2
+│                 │  Scores (query, chunk) pairs jointly
+│                 │  → Top-8 by rerank score
 └────────┬────────┘
          │  Retrieved context (spec + RTL + patterns + bugs)
          ▼
@@ -113,6 +137,7 @@ Query (component description)
 | LLM | `llama-3.1-70b-versatile` via Groq API |
 | LangChain integration | `langchain-groq` / `ChatGroq` |
 | Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
+| Re-ranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
 | Vector store | ChromaDB (local) |
 | RAG framework | LangChain |
 | Simulation | Verilator 5.022 |
@@ -360,7 +385,7 @@ The second hardest part was the Verilator toolchain setup on Windows (WSL2 + GCC
 
 **1. Better spec chunking:** The RISC-V spec opcode table should be a single, atomic, high-priority chunk with metadata like `{"type": "opcode_table", "priority": "high"}`. The current chunking by page groups splits tables across chunks, losing structure.
 
-**2. Re-ranking:** Add a cross-encoder reranker (e.g., `cross-encoder/ms-marco-MiniLM-L-6-v2`) between retrieval and generation. This would filter out low-relevance chunks and improve signal-to-noise in the context.
+**2. Re-ranking (implemented):** We added a two-stage retrieval pipeline using `cross-encoder/ms-marco-MiniLM-L-6-v2` as a re-ranker. Fetch-30 candidates from ChromaDB, filter RVC/RV64 noise, deduplicate, re-rank, pass top-8 to LLM. The re-ranker scored the correct RV32I opcode table chunk at 5.559 vs -0.120 for irrelevant chunks — a clear separation that pure embedding similarity could not achieve. This directly addresses the decoder opcode failure mode.
 
 **3. Iterative verification loop:** Build a feedback loop where Verilator errors are fed back to the LLM for self-correction. Currently generation is one-shot — with an auto-repair loop, failures like the opcode errors could be caught and corrected automatically.
 
