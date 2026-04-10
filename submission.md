@@ -3,11 +3,11 @@
 | Field        | Details                                              |
 |--------------|------------------------------------------------------|
 | **Name**     | Prince Kumar                                         |
-| **Email**    | your_email@example.com                               |
-| **Phone**    | +91-XXXXXXXXXX                                       |
+| **Email**    | princeku07190@gmail.com                              |
+| **Phone**    | +91- 6204313778                                      |
 | **Country**  | India                                                |
-| **Date**     | 2026-04-09                                           |
-| **LinkedIn** | https://linkedin.com/in/yourprofile                  |
+| **Date**     | 2026-04-10                                           |
+| **LinkedIn** | https://www.linkedin.com/in/prince-kumar-66ba45293/  |
 | **GitHub**   | https://github.com/princ0301/Fermions_ML             |
 
 ---
@@ -134,7 +134,7 @@ Query (component description)
 
 | Component | Tool/Model |
 |-----------|------------|
-| LLM | `llama-3.1-70b-versatile` via Groq API |
+| LLM | `meta-llama/llama-4-scout-17b-16e-instruct` via Groq API |
 | LangChain integration | `langchain-groq` / `ChatGroq` |
 | Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
 | Re-ranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
@@ -302,9 +302,9 @@ LW   x4, 0(x0)     # x4 = 15  (load from memory)
 
 **Result:**
 ```
-Cycle 15 | PC=0x3c | [WRITE 0x0=0xf]   ✅  SW executed correctly
-Cycle 16 | PC=0x40 | [READ  0x0=0xf]   ✅  LW executed correctly
-Final dmem[0] = 0xf (Expected: 0xf)    ✅  PASS
+Cycle 15 | PC=0x3c | [WRITE 0x0=0xf]   SW executed correctly
+Cycle 16 | PC=0x40 | [READ  0x0=0xf]   LW executed correctly
+Final dmem[0] = 0xf (Expected: 0xf)    PASS
 ```
 
 The pipeline correctly computed 5+10=15 and stored/loaded it through data memory with forwarding active.
